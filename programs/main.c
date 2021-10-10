@@ -9,18 +9,28 @@
 #include <stdio.h>
 
 int main(int argc, char **argv) {
+  char buf[FS_PATH_MAX];
   Fs fs = FsNew();
-  FsMkfile(fs, "hello.txt");
-  FsMkfile(fs, "world.txt");
-  FsMkdir(fs, "bin");
-  FsMkfile(fs, "bin/ls");
-  FsMkfile(fs, "bin/pwd");
-  FsMkdir(fs, "home");
-  FsMkdir(fs, "home/jas");
-  FsMkfile(fs, "home/jas/todo.txt");
-  FsMkfile(fs, "home/jas/mail.txt");
-  FsTree(fs, "/home/jas");
-  printf("---\n"); // marker to separate output
-  FsTree(fs, NULL);
+  FsMkdir(fs, "dir1");
+  FsCd(fs, "dir1");
+  FsGetCwd(fs, buf);
+  // printf("cwd: %s\n", buf);
+  // FsTree(fs, "/");
+  FsMkdir(fs, "dir2");
+  // FsCd(fs, "/dir1/dir2");
+  FsGetCwd(fs, buf);
+  printf("cwd: %s\n", buf);
+  FsTree(fs, "/");
+  FsCd(fs, "/");
+  FsMkdir(fs, "dir3");
+  FsTree(fs, "/");
+  FsTree(fs, "/dir1");
+
+  puts("=================");
+  FsCd(fs, "");
+  FsGetCwd(fs, buf);
+  printf("cwd: %s\n", buf);
   FsFree(fs);
+  printf("ALL DONE\n");
+  return 0;
 }
