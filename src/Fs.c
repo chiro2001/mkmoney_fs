@@ -22,7 +22,7 @@ Fs FsNew(void) {
     return NULL;
 }
 
-void FsGetCwd(Fs fs, char cwd[PATH_MAX + 1]) {
+void FsGetCwd(Fs fs, char cwd[FS_PATH_MAX + 1]) {
     // TODO
 }
 
