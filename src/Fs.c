@@ -13,6 +13,9 @@
 #include "Fs.h"
 #include "utility.h"
 
+#define BLUE "\033[34m"
+#define RESET_COLOR "\033[0m"
+
 const char FsErrorMessages[][64] = {"Fs OK",
                                     "Fs Error",
                                     "File exists",
@@ -59,6 +62,53 @@ FIL *FsFilFindByName(FIL *dir, const char *name) {
   }
   // 找不到文件
   return NULL;
+}
+
+/// 按照字典序排序文件夹中的文件排列顺序
+/// \param dir
+/// \param reverse
+void FsFilSort(FIL *dir, int reverse) {
+  if (!dir || dir->size == 0 || dir->type == REGULAR_FILE || dir->link)
+    return;
+  FIL *tmp = NULL;
+  // 使用简单的冒泡排序
+  for (int i = 0; i < dir->size; i++) {
+    if (dir->children[i]->link)
+      continue;
+    for (int j = i + 1; j < dir->size; j++) {
+      if (dir->children[j]->link)
+        continue;
+      if (0 < (strcmp(dir->children[i]->name, dir->children[j]->name) *
+               (reverse ? -1 : 1))) {
+        // printf("%s <==> %s\n", dir->children[i]->name,
+        // dir->children[j]->name);
+        tmp = dir->children[i];
+        dir->children[i] = dir->children[j];
+        dir->children[j] = tmp;
+      }
+    }
+  }
+}
+
+void FsFilPrint(FIL *file) {
+  if (!file) {
+    printf("[EMPTY FILE]\n");
+    return;
+  }
+  if (file->link) {
+    printf("[link] %s -> %s\n", file->name, file->link->name);
+    return;
+  }
+  if (file->type == DIRECTORY) {
+    printf("[dir ] %s: ", file->name);
+    FsFilSort(file, 0);
+    for (int i = 0; i < file->size; i++) {
+      printf("%s%s", file->children[i]->name,
+             i + 1 == file->size ? "\n" : ", ");
+    }
+  } else {
+    printf("[file] %s\n", file->name);
+  }
 }
 
 PATH *FsPathGetTail(PATH *path) {
@@ -183,17 +233,11 @@ PATH *FsPathClone(PATH *src) {
   return dst;
 }
 
-/// 简化路径，`/a/../b` -> `/b`
-/// \param path
-void FsPathSimplify(PATH *path) {
-  // TODO
-}
-
 char *FsPathGetStr(PATH *path) {
   size_t length = 0;
   PATH *p = path;
   while (p) {
-    length += p->file->name_length;
+    length += p->file->name_length + 1;
     p = p->next;
   }
   char *pathStr = malloc(sizeof(char) * (length + 1));
@@ -202,17 +246,76 @@ char *FsPathGetStr(PATH *path) {
   while (p) {
     strcpy(str, p->file->name);
     str += p->file->name_length;
+    if (strcmp(p->file->name, FS_SPLIT_STR) != 0) {
+      *(str++) = FS_SPLIT;
+    }
     p = p->next;
   }
   *str = '\0';
   return pathStr;
 }
 
+/// 简化路径，`/a/../b` -> `/b`
+/// \param path
+void FsPathSimplify(PATH **path) {
+  // 清理 Path 中的 link 链接类型
+  PATH *p = *path;
+  if (!p)
+    return;
+  // Path 最顶层一定不是 link
+  while (p && p->next) {
+    // printf("path now: ");
+    // char *pathStrAbs = FsPathGetStr(*path);
+    // puts(pathStrAbs);
+    // free(pathStrAbs);
+    // printf("p: ");
+    // FsFilPrint(p->file);
+    // printf("p->next: ");
+    // FsFilPrint(p->next->file);
+    if (p->next->file->link) {
+      // 遇到 link，则开始收缩
+      if (p->next->file->link == p->next->file &&
+          p->next->file->link != (*path)->file) {
+        // "." 路径
+        // 直接跳过这个 Node
+        PATH *tmp = p->next;
+        tmp->next = NULL;
+        p->next = p->next->next;
+        FsPathFree(tmp);
+      } else {
+        // ".." 路径
+        // 跳过 p、.. 两个 Node
+        PATH *tmp = p->forward;
+        if (p->next) {
+          if (!p->forward) {
+            // p: `/`
+            // `/..` -> `/`
+            FsPathFree(p->next);
+            p->next = NULL;
+            break;
+          } else {
+            p->forward->next = p->next->next;
+          }
+          p->next->next = NULL;
+          FsPathFree(p->next);
+        } else
+          p->forward->next = p->next;
+        p->next = NULL;
+        FsPathFree(p);
+        p = tmp;
+      }
+    }
+    if (!p)
+      break;
+    p = p->next;
+  }
+}
+
 FsErrors FsPathParse(PATH *pathRoot, const char *pathStr, PATH **path) {
-  if (!path || !pathStr)
+  if (!path)
     return FS_ERROR;
   const char *p = pathStr;
-  if (*pathStr == '\0') {
+  if (!pathStr || !*pathStr) {
     // 空串，返回 pwd
     *path = FsPathClone(pathRoot);
     return FS_OK;
@@ -230,8 +333,11 @@ FsErrors FsPathParse(PATH *pathRoot, const char *pathStr, PATH **path) {
     memset(*path, 0, sizeof(PATH));
     (*path)->file = pathRoot->file;
   }
+  // 去除开头连续的 `//`
+  while (*pathStr && *(pathStr + 1) == FS_SPLIT)
+    pathStr++;
   // 现在 path 已经是绝对路径，接下来拼接 pathStr，
-  PATH *pathTail = *path;
+  PATH *pathTail = FsPathGetTail(*path);
   // 拼接过程中检查文件是否存在
   char buf[FS_PATH_MAX];
   char *p2 = NULL;
@@ -242,6 +348,10 @@ FsErrors FsPathParse(PATH *pathRoot, const char *pathStr, PATH **path) {
     // 遇到'/' || 是相对路径开头 || 是绝对路径的'/'
     if (*p == FS_SPLIT || (*pathStr != FS_SPLIT && p == pathStr) ||
         (*pathStr == FS_SPLIT && p == pathStr + 1)) {
+      while (*p == FS_SPLIT && *p)
+        p++;
+      if (!*p)
+        return FS_OK;
       // 向下加一层文件夹
       // 找到文件名
       p2 = buf;
@@ -249,7 +359,7 @@ FsErrors FsPathParse(PATH *pathRoot, const char *pathStr, PATH **path) {
         *(p2++) = *(p++);
       *p2 = '\0';
       // 查找对应文件是否存在
-      FIL *target = FsFilFindByName((*path)->file, buf);
+      FIL *target = FsFilFindByName(pathTail->file, buf);
       if (!target) {
         return FS_NO_SUCH_FILE;
       }
@@ -259,6 +369,12 @@ FsErrors FsPathParse(PATH *pathRoot, const char *pathStr, PATH **path) {
         // 那么就是正确的，否则是错误 FS_NOT_A_DIRECTORY
         if ((*p == FS_SPLIT && *(p + 1) == '\0') || *p == '\0') {
           pathTail = FsPathInsert(pathTail, target);
+          FsPathSimplify(path);
+          pathTail = FsPathGetTail(*path);
+          // printf("After insert [file]: ");
+          // char *pathAbs = FsPathGetStr(*path);
+          // puts(pathAbs);
+          // free(pathAbs);
           return FS_OK;
         } else {
           return FS_NOT_A_DIRECTORY;
@@ -266,11 +382,17 @@ FsErrors FsPathParse(PATH *pathRoot, const char *pathStr, PATH **path) {
       } else {
         // target->type == DIRECTORY
         pathTail = FsPathInsert(pathTail, target);
+        FsPathSimplify(path);
+        // printf("After insert [dir]: ");
+        // char *pathAbs = FsPathGetStr(*path);
+        // puts(pathAbs);
+        // free(pathAbs);
+        pathTail = FsPathGetTail(*path);
       }
     }
     if (!*p)
       break;
-    p++;
+    // p++;
   }
   return FS_OK;
 }
@@ -282,35 +404,19 @@ FsErrors FsPathParse(PATH *pathRoot, const char *pathStr, PATH **path) {
 /// \param fs
 /// \param cwd
 void FsGetCwd(Fs fs, char cwd[FS_PATH_MAX + 1]) {
-  char *p = cwd;
-  // FIL *dir = fs->current->file;
-  // // 建立一个栈，储存访问到根目录的路径
-  // FIL **stack = (FIL **)malloc(sizeof(FIL *) * FS_PATH_MAX);
-  // assert(stack);
-  // size_t stackTail = 0;
-  // while (dir != NULL) {
-  //   stack[stackTail++] = dir;
-  //   dir = dir->parent;
-  // }
-  // // 从栈中依次取出文件，拼接文件名
-  // while (stackTail) {
-  //   stackTail--;
-  //   strcpy(p, stack[stackTail]->name);
-  //   p += stack[stackTail]->name_length;
-  //   *(p++) = '/';
+  // char *p = cwd;
+  // PATH *path = fs->pathRoot;
+  // char *p2 = NULL;
+  // while (path) {
+  //   p2 = path->file->name;
+  //   while (*p2)
+  //     *(p++) = *(p2++);
+  //   path = path->next;
   // }
   // *p = '\0';
-  // // 删除栈
-  // free(stack);
-  PATH *path = fs->pathRoot;
-  char *p2 = NULL;
-  while (path) {
-    p2 = path->file->name;
-    while (*p2)
-      *(p++) = *(p2++);
-    path = path->next;
-  }
-  *p = '\0';
+  char *pathAbs = FsPathGetStr(fs->pathRoot);
+  strcpy(cwd, pathAbs);
+  free(pathAbs);
 }
 
 /// 清理文件树
@@ -407,6 +513,7 @@ void FsMkdir(Fs fs, char *pathStr) {
     if (targetPath->file->size == FS_MAX_CHILDREN) {
       PERROR(FS_ERROR, "Children pool full!");
     }
+    FsFilSort(targetPath->file, 0);
   } else {
     PERRORD(FS_FILE_EXISTS, "mkdir: cannot create directory '%s'", pathStr);
   }
@@ -428,7 +535,7 @@ void FsMkfile(Fs fs, char *path) {
 // 路径的前缀是一个常规文件 cd: 'path': Not a directory
 // 路径的前缀不存在 cd: 'path': No such file or directory
 void FsCd(Fs fs, char *pathStr) {
-  if (!pathStr || !(*pathStr)) {
+  if (!pathStr || !*pathStr) {
     FsPathFree(fs->pathRoot->next);
     fs->pathRoot->file = fs->root;
     fs->pathRoot->next = NULL;
@@ -438,7 +545,7 @@ void FsCd(Fs fs, char *pathStr) {
   PATH *path = NULL;
   FsErrors res = FsPathParse(fs->pathRoot, pathStr, &path);
   if (res) {
-    PERRORD(res, "cd: %s", pathStr);
+    PERRORD(res, "cd: '%s'", pathStr);
   } else {
     FsPathFree(fs->pathRoot);
     fs->pathRoot = FsPathClone(path);
@@ -459,14 +566,49 @@ void FsCd(Fs fs, char *pathStr) {
 // ls: cannot access 'path': Not a directory
 // 路径的前缀不存在 ls: cannot access 'path': No such file or
 // directory
-void FsLs(Fs fs, char *path) {
-  // TODO
+void FsLs(Fs fs, char *pathStr) {
+  FIL *target = NULL;
+  if (!pathStr || (pathStr && !(*pathStr))) {
+    target = fs->current->file;
+  } else {
+    PATH *path = NULL;
+    FsErrors res = FsPathParse(fs->pathRoot, pathStr, &path);
+    if (res) {
+      FsPathFree(path);
+      PERRORD(res, "ls: cannot access '%s'", pathStr);
+      return;
+    }
+    target = FsPathGetTail(path)->file;
+    FsPathFree(path);
+    if (target->type == REGULAR_FILE) {
+      PERRORD(FS_NOT_A_DIRECTORY, "ls: cannot access '%s'", pathStr);
+      return;
+    }
+  }
+  for (int i = 0; i < target->size; i++) {
+    FIL *f = target->children[i];
+    if (f->link)
+      continue;
+#ifdef COLORED
+    printf("%s%s%s", (f->type == REGULAR_FILE ? RESET_COLOR : BLUE), f->name,
+           RESET_COLOR);
+#else
+    printf("%s", f->name);
+#endif
+    if (f->type == DIRECTORY)
+      printf(FS_SPLIT_STR "\n");
+    else
+      printf("\n");
+    return;
+  }
 }
 
 // 该函数打印当前工作目录的规范路径。
 // 该函数大致相当于 Linux 下的 pwd 命令。
 void FsPwd(Fs fs) {
-  // TODO
+  char *pathStrAbs = FsPathGetStr(fs->pathRoot);
+  printf("%s\n", pathStrAbs);
+  free(pathStrAbs);
 }
 
 FsErrors FsTreeInner(FIL *file, int layer) {
@@ -476,15 +618,26 @@ FsErrors FsTreeInner(FIL *file, int layer) {
   if (file->type == REGULAR_FILE) {
     return FS_NOT_A_DIRECTORY;
   }
-  // TODO: Sort
+  // printf("FsTreeInner: %s\n", file->name);
+  // FsFilPrint(file);
+  FsFilSort(file, 0);
   for (size_t i = 0; i < file->size; i++) {
     FIL *f = file->children[i];
     if (f->link)
       continue;
     for (int j = 0; j < layer; j++)
       printf("    ");
-    printf("%s\n", f->name);
-    if (f->type == DIRECTORY && !f->link) {
+#ifdef COLORED
+    printf("%s%s%s", (f->type == REGULAR_FILE ? RESET_COLOR : BLUE), f->name,
+           RESET_COLOR);
+#else
+    printf("%s", f->name);
+#endif
+    if (f->type == DIRECTORY)
+      puts("/");
+    else
+      puts("");
+    if (f->type == DIRECTORY) {
       FsErrors res = FsTreeInner(f, layer + 1);
       if (res) {
         return res;
@@ -513,7 +666,7 @@ void FsTree(Fs fs, char *pathStr) {
   }
   char *pathStrAbs = FsPathGetStr(path);
   PATH *pathTail = FsPathGetTail(path);
-  printf("%s:\n", pathStrAbs);
+  // printf("tree %s:\n", pathStrAbs);
   res = FsTreeInner(pathTail->file, 0);
   if (res) {
     FsPathFree(path);

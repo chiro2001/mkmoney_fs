@@ -36,6 +36,9 @@ message(STATUS "Source files: ${source_files}")
 set(CMAKE_C_FLAGS "-Wall -g -ggdb")
 
 add_executable(fs ${PROJECT_SOURCE_DIR}/programs/main.c ${source_files})
+add_executable(fs_color ${PROJECT_SOURCE_DIR}/programs/main.c ${source_files})
+
+target_compile_options(fs_color PUBLIC -DCOLORED)
 
 set(CPACK_PROJECT_NAME ${PROJECT_NAME})
 set(CPACK_PROJECT_VERSION ${PROJECT_VERSION})
