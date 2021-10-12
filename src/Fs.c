@@ -41,6 +41,8 @@ const char FsErrorMessages[][64] = {"Fs OK",
 #endif
 
 #define FS_MAX_CHILDREN 64
+// 是否在列出文件时在文件夹末尾加上分隔符
+// #define FS_SHOW_DIR_SPLIT
 
 // 储存文件系统相关信息
 struct FsRep {
@@ -475,15 +477,29 @@ void FsFree(Fs fs) {
 
 char *FsPathStrGetName(char *pathStr) {
   size_t length = strlen(pathStr);
-  char *p = pathStr + length - 1;
-  while (*p && p >= pathStr) {
-    if (*p == FS_SPLIT && p != pathStr + length - 1) {
-      return p + 1;
+  char *newName = malloc(sizeof(char) * (length + 1));
+  strcpy(newName, pathStr);
+  char *p = newName + length - 1;
+  while (*p == '/' && *p) {
+    *p = '\0';
+    p--;
+  }
+  while (*p && p >= newName) {
+    if (*p == FS_SPLIT && p != newName + length - 1) {
+      size_t length2 = strlen(p + 1);
+      char *newNewName = malloc(sizeof(char) * (length2 + 1));
+      strcpy(newNewName, p + 1);
+      free(newName);
+      return newNewName;
     }
     p--;
   }
-  // return NULL;
-  return pathStr;
+  if (!*p) {
+    // return p;
+    // return "";
+    *p = '\0';
+  }
+  return newName;
 }
 
 /// 复制一份 pathStr，并且切断到最后一个 '/' 之前
@@ -493,20 +509,32 @@ char *FsPathStrShift(char *pathStr) {
   size_t length = strlen(pathStr);
   char *dst = malloc(sizeof(char) * (length + 1));
   strcpy(dst, pathStr);
-  // char *p = dst + length - 1;
-  // while (*p && p >= dst) {
-  //   if (*p == FS_SPLIT && p != dst + length - 1) {
-  //     *(p + 1) = '\0';
-  //     return dst;
-  //   }
-  // }
-  char *name = FsPathStrGetName(dst);
-  if (name) {
-    *name = '\0';
-  } else {
-    // 没找到QAQ
-    PERROR(FS_ERROR, "No " FS_SPLIT_STR " found!");
+  // // char *p = dst + length - 1;
+  // // while (*p && p >= dst) {
+  // //   if (*p == FS_SPLIT && p != dst + length - 1) {
+  // //     *(p + 1) = '\0';
+  // //     return dst;
+  // //   }
+  // // }
+  // char *name = FsPathStrGetName(dst);
+  // char *name = FsPathStrGetName(pathStr);
+
+  char *p = dst + length - 1;
+  while (*p && p > dst) {
+    if (*p == FS_SPLIT && p != dst + length - 1) {
+      *(p + 1) = '\0';
+      return dst;
+    }
+    p--;
   }
+  if (p == dst)
+    *p = '\0';
+  // if (name) {
+  //   *name = '\0';
+  // } else {
+  //   // 没找到QAQ
+  //   PERROR(FS_ERROR, "No " FS_SPLIT_STR " found!");
+  // }
   return dst;
 }
 
@@ -523,19 +551,31 @@ char *FsPathStrShift(char *pathStr) {
 // 打印它们。还要注意，当出现这些错误之一时，程序不应该退出—函数应该简单地返回
 // 文件系统，保持不变。
 void FsMkdir(Fs fs, char *pathStr) {
-  PATH *path;
+  PATH *path = NULL;
   char *pathParentStr = FsPathStrShift(pathStr);
   char *name = FsPathStrGetName(pathStr);
   FsErrors res = FsPathParse(fs->pathRoot, pathParentStr, &path);
   if (res != FS_OK) {
+    free(name);
     FsPathFree(path);
     free(pathParentStr);
     PERRORD(res, "mkdir: cannot create directory '%s'", pathStr);
     return;
   }
   PATH *targetPath = FsPathGetTail(path);
-  FIL *found = FsFilFindByName(targetPath->file, pathStr);
-  if (!found) {
+  if (targetPath->file->type == REGULAR_FILE) {
+    free(name);
+    FsPathFree(path);
+    free(pathParentStr);
+    PERRORD(FS_NOT_A_DIRECTORY, "mkfile: cannot create file '%s'", pathStr);
+    return;
+  }
+  PATH *findingPath = NULL;
+  FsErrors resFinding = FsPathParse(fs->pathRoot, pathStr, &findingPath);
+  if (resFinding == FS_OK) {
+    // 找到了文件，错误。
+    PERRORD(FS_FILE_EXISTS, "mkdir: cannot create directory '%s'", pathStr);
+  } else {
     // 正常情况
     FIL *dirFile = NULL;
     FsInitDir(targetPath->file, &dirFile, name);
@@ -544,10 +584,10 @@ void FsMkdir(Fs fs, char *pathStr) {
       PERROR(FS_ERROR, "Children pool full!");
     }
     FsFilSort(targetPath->file, 0);
-  } else {
-    PERRORD(FS_FILE_EXISTS, "mkdir: cannot create directory '%s'", pathStr);
   }
+  FsPathFree(findingPath);
   FsPathFree(path);
+  free(name);
   free(pathParentStr);
 }
 
@@ -555,19 +595,31 @@ void FsMkdir(Fs fs, char *pathStr) {
 // 这个函数在Linux 中没有直接等效的命令，但最接近的命令是touch，它可以用来创建空
 // 的常规文件，但也有其他用途，如更新时间戳。
 void FsMkfile(Fs fs, char *pathStr) {
-  PATH *path;
+  PATH *path = NULL;
   char *pathParentStr = FsPathStrShift(pathStr);
   char *name = FsPathStrGetName(pathStr);
   FsErrors res = FsPathParse(fs->pathRoot, pathParentStr, &path);
   if (res != FS_OK) {
+    free(name);
     FsPathFree(path);
     free(pathParentStr);
     PERRORD(res, "mkfile: cannot create file '%s'", pathStr);
     return;
   }
   PATH *targetPath = FsPathGetTail(path);
-  FIL *found = FsFilFindByName(targetPath->file, pathStr);
-  if (!found) {
+  if (targetPath->file->type == REGULAR_FILE) {
+    FsPathFree(path);
+    free(name);
+    free(pathParentStr);
+    PERRORD(FS_NOT_A_DIRECTORY, "mkfile: cannot create file '%s'", pathStr);
+    return;
+  }
+  PATH *findingPath = NULL;
+  FsErrors resFinding = FsPathParse(fs->pathRoot, pathStr, &findingPath);
+  if (resFinding == FS_OK) {
+    // 找到了文件，错误。
+    PERRORD(FS_FILE_EXISTS, "mkfile: cannot create directory '%s'", pathStr);
+  } else {
     // 正常情况
     FIL *file = NULL;
     FsInitFile(targetPath->file, &file, name);
@@ -576,11 +628,10 @@ void FsMkfile(Fs fs, char *pathStr) {
       PERROR(FS_ERROR, "Children pool full!");
     }
     FsFilSort(targetPath->file, 0);
-  } else {
-    PERRORD(FS_FILE_EXISTS, "mkfile: cannot create file '%s'", pathStr);
   }
   FsPathFree(path);
   free(pathParentStr);
+  free(name);
 }
 
 // 该函数的路径可能为 NULL。
@@ -655,10 +706,14 @@ void FsLs(Fs fs, char *pathStr) {
 #else
     printf("%s", f->name);
 #endif
+#ifdef FS_SHOW_DIR_SPLIT
     if (f->type == DIRECTORY)
       printf(FS_SPLIT_STR "\n");
     else
       printf("\n");
+#else
+    puts("");
+#endif
   }
 }
 
@@ -680,11 +735,13 @@ FsErrors FsTreeInner(FIL *file, int layer) {
   // printf("FsTreeInner: %s\n", file->name);
   // FsFilPrint(file);
   FsFilSort(file, 0);
+  if (layer == 0)
+    printf("%s\n", file->name);
   for (size_t i = 0; i < file->size_children; i++) {
     FIL *f = file->children[i];
     if (f->link)
       continue;
-    for (int j = 0; j < layer; j++)
+    for (int j = 0; j < layer + 1; j++)
       printf("    ");
 #ifdef COLORED
     printf("%s%s%s", (f->type == REGULAR_FILE ? RESET_COLOR : BLUE), f->name,
@@ -692,10 +749,14 @@ FsErrors FsTreeInner(FIL *file, int layer) {
 #else
     printf("%s", f->name);
 #endif
+#ifdef FS_SHOW_DIR_SPLIT
     if (f->type == DIRECTORY)
-      puts("/");
+      puts(FS_SPLIT_STR);
     else
       puts("");
+#else
+    puts("");
+#endif
     if (f->type == DIRECTORY) {
       FsErrors res = FsTreeInner(f, layer + 1);
       if (res) {
@@ -889,15 +950,6 @@ FsErrors FsFilCopy(FIL *src, FIL *dst) {
   if (found) {
     return FS_FILE_EXISTS;
   }
-  // FIL *data = malloc(sizeof(FIL));
-  // memcpy(data, src, sizeof(FIL));
-  // data->children = NULL;
-  // data->size_children = 0;
-  // data->content = NULL;
-  // data->parent = dst;
-  // // 分配文件名
-  // data->name = malloc(sizeof(char) * (data->name_length + 1));
-  // memcpy(data->name, src->name, sizeof(char) * (src->name_length + 1));
   FIL *data = NULL;
   if (src->type == DIRECTORY) {
     FsInitDir(dst, &data, src->name);
@@ -919,6 +971,33 @@ FsErrors FsFilCopy(FIL *src, FIL *dst) {
   return FS_OK;
 }
 
+FsErrors FsFilMove(FIL *src, FIL *dst) {
+  if (!src || !dst)
+    return FS_ERROR;
+  if (dst->type != DIRECTORY)
+    return FS_NOT_A_DIRECTORY;
+  int parentIndex = -1;
+  for (int i = 0; i < src->parent->size_children; i++) {
+    if (src->parent->children[i] == src) {
+      parentIndex = i;
+      break;
+    }
+  }
+  if (parentIndex < 0)
+    return FS_ERROR;
+  if (src->parent->size_children == 1) {
+    src->parent->size_children = 0;
+  } else {
+    src->parent->children[parentIndex] =
+        src->parent->children[--src->parent->size_children];
+    FsFilSort(src->parent, 0);
+  }
+  src->parent = dst;
+  dst->children[dst->size_children++] = src;
+  FsFilSort(dst, 0);
+  return FS_OK;
+}
+
 // 该函数接受一个以NULL 结尾的路径数组src 和路径dest。
 // 如果src 数组恰好包含一个路径，那么它应该将位于src 的 文件复制到dest。
 // 如果src 数组包含多个路径，那么dest 应该指向一个目录，
@@ -935,18 +1014,53 @@ void FsCp(Fs fs, bool recursive, char *src[], char *dest) {
   PATH *pathDst = NULL;
   FsErrors resDst = FsPathParse(fs->pathRoot, dest, &pathDst);
   if (resDst) {
-    PERRORD(resDst, "cp: '%s'", dest);
+    if (resDst == FS_NO_SUCH_FILE) {
+      // 找不到 Dist 则新建这个文件
+      // 取 dst 的上层parent
+      PATH *dstPathParent = NULL;
+      char *pathParentStr = FsPathStrShift(dest);
+      FsErrors res = FsPathParse(fs->pathRoot, pathParentStr, &dstPathParent);
+      if (res != FS_OK) {
+        PERRORD(res, "cp: '%s'", dest);
+      } else {
+        PATH *pathParent = NULL;
+        res = FsPathParse(fs->pathRoot, *pathStrPointer, &pathParent);
+        if (res) {
+          PERRORD(res, "cp: '%s'", *pathStrPointer);
+        } else {
+          PATH *dstPathParentTail = FsPathGetTail(dstPathParent);
+          PATH *pathParentTail = FsPathGetTail(pathParent);
+          if (pathParentTail->file->type == DIRECTORY && !recursive) {
+            PERRORD(FS_IS_A_DIRECTORY, "cp: '%s'", *pathStrPointer);
+          } else {
+            if (pathParentTail->file->type == DIRECTORY) {
+              FsFilCopy(pathParentTail->file, dstPathParentTail->file);
+            } else {
+              FIL *newFile = NULL;
+              char *name = FsPathStrGetName(dest);
+              FsInitFile(dstPathParentTail->file, &newFile, name);
+              free(name);
+              FsFilCopy(newFile, dstPathParentTail->file);
+              FsFilFree(newFile);
+            }
+          }
+        }
+        FsPathFree(pathParent);
+      }
+      free(pathParentStr);
+
+    } else {
+      PERRORD(resDst, "cp: '%s'", dest);
+    }
     FsPathFree(pathDst);
     return;
   }
   PATH *pathDstTail = FsPathGetTail(pathDst);
   if (pathDstTail->file->type != DIRECTORY) {
-    PERRORD(FS_NOT_A_DIRECTORY, "cp: '%s'", dest);
-    FsPathFree(pathDst);
-    return;
-  }
-  // 仅包含一个路径
-  if (*pathStrPointer && !*(pathStrPointer + 1)) {
+    // 目标是个文件，则覆盖这个文件
+    // 先删除之
+    FIL *dstParent = pathDstTail->file->parent;
+    // 只取最上面的文件
     PATH *pathParent = NULL;
     FsErrors res = FsPathParse(fs->pathRoot, *pathStrPointer, &pathParent);
     if (res) {
@@ -954,56 +1068,101 @@ void FsCp(Fs fs, bool recursive, char *src[], char *dest) {
       FsPathFree(pathParent);
       return;
     }
+    char *nameOld = malloc(sizeof(char) * (pathDstTail->file->name_length + 1));
+    strcpy(nameOld, pathDstTail->file->name);
+    printf("To del: (%s) ", nameOld);
+    FsFilPrint(pathDstTail->file);
+    FsFilDlTree(pathDstTail->file);
+
     PATH *pathParentTail = FsPathGetTail(pathParent);
     if (pathParentTail->file->link) {
       PERRORD(FS_NO_SUCH_FILE, "cp: '%s'", *pathStrPointer);
     } else {
-      if (pathParentTail->file->type == REGULAR_FILE) {
-        // 仅仅复制该文件
-        if (pathParentTail->file->link) {
-          PERRORD(FS_NO_SUCH_FILE, "cp: '%s'", *pathStrPointer);
-        } else {
-          res = FsFilCopy(pathParentTail->file, pathDstTail->file);
-          if (res) {
-            PERRORD(res, "cp: '%s'", *pathStrPointer);
-          }
-        }
+      // 复制到内存
+      FIL *newFile = NULL;
+      FsInitFile(pathParentTail->file->parent, &newFile, nameOld);
+      newFile->size_file = pathParentTail->file->size_file;
+      newFile->content = malloc(sizeof(char) * newFile->size_file);
+      memcpy(newFile->content, pathParentTail->file->content,
+             sizeof(char) * newFile->size_file);
+      // 复制该文件
+      if (pathParentTail->file->link) {
+        PERRORD(FS_NO_SUCH_FILE, "cp: '%s'", *pathStrPointer);
       } else {
-        // 复制该路径下的所有文件
-        for (int i = 0; i < pathParentTail->file->size_children; i++) {
-          FIL *f = pathParentTail->file->children[i];
-          // 不recursive 的时候不复制目录
-          if (!recursive && f->type == DIRECTORY) {
-            PERRORD(FS_IS_A_DIRECTORY, "cp: '%s'", f->name);
-            continue;
-          }
-          res = FsFilCopy(f, pathDstTail->file);
-          if (res) {
-            PERRORD(res, "cp: '%s'", f->name);
-          }
+        printf("COPY (file->file): (%s->%s)\n", newFile->name, dstParent->name);
+        FsFilPrint(newFile);
+        FsFilPrint(dstParent);
+        res = FsFilCopy(newFile, dstParent);
+        if (res) {
+          PERRORD(res, "cp: '%s'", *pathStrPointer);
         }
       }
+      FsFilFree(newFile);
     }
+    free(nameOld);
     FsPathFree(pathParent);
   } else {
-    // 包含多个路径，则复制这些路径的文件
-    while (pathStrPointer) {
-      PATH *path = NULL;
-      FsErrors res = FsPathParse(fs->pathRoot, *pathStrPointer, &path);
+    // 目标是一个路径
+    // 源文件仅包含一个路径
+    if (*pathStrPointer && !*(pathStrPointer + 1)) {
+      PATH *pathParent = NULL;
+      FsErrors res = FsPathParse(fs->pathRoot, *pathStrPointer, &pathParent);
       if (res) {
         PERRORD(res, "cp: '%s'", *pathStrPointer);
-        FsPathFree(path);
-        continue;
+        FsPathFree(pathParent);
+        return;
       }
-      PATH *pathTargetTail = FsPathGetTail(path);
-      // 不recursive 的时候不复制目录
-      if (!recursive && pathTargetTail->file->type == DIRECTORY) {
-        PERRORD(FS_IS_A_DIRECTORY, "cp: '%s'", *pathStrPointer);
+      PATH *pathParentTail = FsPathGetTail(pathParent);
+      if (pathParentTail->file->link) {
+        PERRORD(FS_NO_SUCH_FILE, "cp: '%s'", *pathStrPointer);
       } else {
-        FsFilCopy(pathTargetTail->file, pathDstTail->file);
+        if (pathParentTail->file->type == REGULAR_FILE) {
+          // 仅仅复制该文件
+          if (pathParentTail->file->link) {
+            PERRORD(FS_NO_SUCH_FILE, "cp: '%s'", *pathStrPointer);
+          } else {
+            res = FsFilCopy(pathParentTail->file, pathDstTail->file);
+            if (res) {
+              PERRORD(res, "cp: '%s'", *pathStrPointer);
+            }
+          }
+        } else {
+          // 复制该路径下的所有文件
+          for (int i = 0; i < pathParentTail->file->size_children; i++) {
+            FIL *f = pathParentTail->file->children[i];
+            // 不recursive 的时候不复制目录
+            if (!recursive && f->type == DIRECTORY) {
+              PERRORD(FS_IS_A_DIRECTORY, "cp: '%s'", f->name);
+              continue;
+            }
+            res = FsFilCopy(f, pathDstTail->file);
+            if (res) {
+              PERRORD(res, "cp: '%s'", f->name);
+            }
+          }
+        }
       }
-      FsPathFree(path);
-      pathStrPointer++;
+      FsPathFree(pathParent);
+    } else {
+      // 包含多个路径，则复制这些路径的文件
+      while (*pathStrPointer) {
+        PATH *path = NULL;
+        FsErrors res = FsPathParse(fs->pathRoot, *pathStrPointer, &path);
+        if (res) {
+          PERRORD(res, "cp: '%s'", *pathStrPointer);
+          FsPathFree(path);
+          continue;
+        }
+        PATH *pathTargetTail = FsPathGetTail(path);
+        // 不recursive 的时候不复制目录
+        if (!recursive && pathTargetTail->file->type == DIRECTORY) {
+          PERRORD(FS_IS_A_DIRECTORY, "cp: '%s'", *pathStrPointer);
+        } else {
+          FsFilCopy(pathTargetTail->file, pathDstTail->file);
+        }
+        FsPathFree(path);
+        pathStrPointer++;
+      }
     }
   }
 
@@ -1022,5 +1181,113 @@ void FsPrint(Fs fs, char *pathStr) {
 // 它应该将src 中所有路径所指向的文件移动到dest。
 // 该函数大致相当于Linux 中的mv 命令。
 void FsMv(Fs fs, char *src[], char *dest) {
-  // TODO
+  // TODO: 检查路径包含
+  char **pathStrPointer = src;
+  if (!*pathStrPointer) {
+    PERROR(FS_NO_SUCH_FILE, "mv");
+    return;
+  }
+  PATH *pathDst = NULL;
+  FsErrors resDst = FsPathParse(fs->pathRoot, dest, &pathDst);
+  if (resDst) {
+    if (resDst == FS_NO_SUCH_FILE) {
+      // 找不到 dist 则新建文件
+      // 取 dst 的上层parent
+      PATH *dstPathParent = NULL;
+      char *pathParentStr = FsPathStrShift(dest);
+      FsErrors res = FsPathParse(fs->pathRoot, pathParentStr, &dstPathParent);
+      if (res != FS_OK) {
+        PERRORD(res, "mv: '%s'", dest);
+      } else {
+        PATH *pathParent = NULL;
+        res = FsPathParse(fs->pathRoot, *pathStrPointer, &pathParent);
+        if (res) {
+          PERRORD(res, "mv: '%s'", *pathStrPointer);
+        } else {
+          // 改名字然后移动
+          PATH *dstPathParentTail = FsPathGetTail(dstPathParent);
+          PATH *pathParentTail = FsPathGetTail(pathParent);
+          free(pathParentTail->file->name);
+          char *name = FsPathStrGetName(dest);
+          size_t length = strlen(name);
+          pathParentTail->file->name = malloc(sizeof(char) * (length + 1));
+          strcpy(pathParentTail->file->name, name);
+          pathParentTail->file->name_length = length;
+          free(name);
+          res = FsFilMove(pathParentTail->file, dstPathParentTail->file);
+          if (res) {
+            PERRORD(res, "mv: '%s'", dest);
+          }
+        }
+        FsPathFree(pathParent);
+      }
+      free(pathParentStr);
+    } else {
+      PERRORD(resDst, "mv: '%s'", dest);
+    }
+    FsPathFree(pathDst);
+    return;
+  }
+  PATH *pathDstTail = FsPathGetTail(pathDst);
+  if (pathDstTail->file->type != DIRECTORY) {
+    // 目标是个文件，则覆盖这个文件
+    // 先删除之
+    FIL *dstParent = pathDstTail->file->parent;
+    // 只取最上面的文件
+    PATH *pathParent = NULL;
+    FsErrors res = FsPathParse(fs->pathRoot, *pathStrPointer, &pathParent);
+    if (res) {
+      PERRORD(res, "mv: '%s'", *pathStrPointer);
+      FsPathFree(pathParent);
+      return;
+    }
+    // char *nameOld = malloc(sizeof(char) * (pathDstTail->file->name_length +
+    // 1)); strcpy(nameOld, pathDstTail->file->name); printf("To del: (%s) ",
+    // nameOld); FsFilPrint(pathDstTail->file);
+    FsFilDlTree(pathDstTail->file);
+
+    PATH *pathParentTail = FsPathGetTail(pathParent);
+    // if (pathParentTail->file->link) {
+    //   PERRORD(FS_NO_SUCH_FILE, "mv: '%s'", *pathStrPointer);
+    // } else {
+    //   // 复制到内存
+    //   FIL *newFile = NULL;
+    //   FsInitFile(pathParentTail->file->parent, &newFile, nameOld);
+    //   newFile->content = malloc(sizeof(char) * newFile->size_file);
+    //   memcpy(newFile->content, pathParentTail->file->content,
+    //          sizeof(newFile->size_file));
+    //   // 复制该文件
+    //   if (pathParentTail->file->link) {
+    //     PERRORD(FS_NO_SUCH_FILE, "mv: '%s'", *pathStrPointer);
+    //   } else {
+    //     printf("COPY (file->file): (%s->%s)\n", newFile->name,
+    //     dstParent->name); FsFilPrint(newFile); FsFilPrint(dstParent); res =
+    //     FsFilCopy(newFile, dstParent); if (res) {
+    //       PERRORD(res, "cmv: '%s'", *pathStrPointer);
+    //     }
+    //   }
+    //   FsFilFree(newFile);
+    // }
+    // free(nameOld);
+
+    // 移动到目标处
+    FsFilMove(pathParentTail->file, dstParent);
+    FsPathFree(pathParent);
+  } else {
+    // 移动这些路径的文件
+    while (*pathStrPointer) {
+      PATH *path = NULL;
+      FsErrors res = FsPathParse(fs->pathRoot, *pathStrPointer, &path);
+      if (res) {
+        PERRORD(res, "mv: '%s'", *pathStrPointer);
+        FsPathFree(path);
+        continue;
+      }
+      PATH *pathTargetTail = FsPathGetTail(path);
+      FsFilMove(pathTargetTail->file, pathDstTail->file);
+      FsPathFree(path);
+      pathStrPointer++;
+    }
+  }
+  FsPathFree(pathDst);
 }

@@ -87,6 +87,14 @@ void bash(Fs fs_) {
         *(arg++) = '\0';
       char *srcFiles[] = {arg2, NULL};
       FsCp(fs, recursive, srcFiles, arg);
+    } else if (strcmp(name, "mv") == 0) {
+      char *arg2 = arg;
+      while (*arg && *arg != ' ')
+        arg++;
+      if (*arg == ' ')
+        *(arg++) = '\0';
+      char *srcFiles[] = {arg2, NULL};
+      FsMv(fs, srcFiles, arg);
     } else if (strcmp(name, "print") == 0) {
       FsPrint(fs, arg);
     } else {
@@ -99,37 +107,164 @@ void bash(Fs fs_) {
 }
 
 int main(int argc, char **argv) {
-  char buf[FS_PATH_MAX];
-  Fs fs = FsNew();
-  FsMkdir(fs, "dir1");
-  FsCd(fs, "dir1");
-  FsGetCwd(fs, buf);
-  // printf("cwd: %s\n", buf);
-  // FsTree(fs, "/");
-  FsMkdir(fs, "dir2");
-  // FsCd(fs, "/dir1/dir2");
-  FsGetCwd(fs, buf);
-  printf("cwd: %s\n", buf);
-  FsTree(fs, "/");
-  FsCd(fs, "/");
-  FsMkdir(fs, "dir3");
-  FsTree(fs, "/");
-  FsTree(fs, "/dir1");
+  printf("########### TEST START ##########\n");
 
-  puts("=================");
-  FsCd(fs, "");
-  FsGetCwd(fs, buf);
-  printf("cwd: %s\n", buf);
+  printf("########### TEST 1 START ##########\n");
+  {
+    Fs fs = FsNew();
+    FsMkdir(fs, "/tmp");
+    FsMkdir(fs, "tmp");
+    FsMkdir(fs, "./tmp");
+    FsFree(fs);
+  }
+  printf("########### TEST 1 DONE ##########\n");
 
-  puts("=================");
-  // FsCd(fs, "/dir1/dir2/");
-  FsCd(fs, "");
-  FsMkfile(fs, "/f");
-  FsLs(fs, NULL);
+  printf("########### TEST 2 START ##########\n");
+  {
+    Fs fs = FsNew();
+    FsMkfile(fs, "hello");
+    // FsPrint(fs, "/");
+    // FsPrint(fs, "/hello");
+    // FsTree(fs, NULL);
+    FsMkfile(fs, "hello/world");
+    FsMkdir(fs, "html");
+    FsMkfile(fs, "html/index.html");
+    FsMkfile(fs, "html/index.html/hi");
+    FsTree(fs, NULL);
+  }
+  printf("########### TEST 2 DONE ##########\n");
 
-  printf("ALL DONE\n");
+  printf("########### TEST 3 START ##########\n");
+  {
+    Fs fs = FsNew();
+    FsMkdir(fs, "tmp");
+    FsCd(fs, "tmp");
+    FsCd(fs, NULL);
+    FsMkfile(fs, "hello.txt");
+    FsTree(fs, NULL);
+  }
+  printf("########### TEST 3 DONE ##########\n");
 
-  bash(fs);
-  FsFree(fs);
+  printf("########### TEST 4 START ##########\n");
+  {
+    Fs fs = FsNew();
+    printf("---\n"); // marker to separate output
+    FsLs(fs, "/");
+    printf("---\n");
+    FsMkfile(fs, "hello.txt");
+    FsMkdir(fs, "tmp");
+    FsLs(fs, "/");
+  }
+  printf("########### TEST 4 DONE ##########\n");
+
+  printf("########### TEST 5 START ##########\n");
+  {
+    Fs fs = FsNew();
+    FsPwd(fs);
+    FsMkdir(fs, "home");
+    FsCd(fs, "home");
+    FsPwd(fs);
+    FsMkdir(fs, "tim");
+    FsCd(fs, "tim");
+    FsPwd(fs);
+  }
+  printf("########### TEST 5 DONE ##########\n");
+
+  printf("########### TEST 6 START ##########\n");
+  {
+    Fs fs = FsNew();
+    FsMkfile(fs, "hello");
+    FsTree(fs, "hello");
+    FsTree(fs, "./hello/world");
+    FsFree(fs);
+  }
+  printf("########### TEST 6 DONE ##########\n");
+
+  printf("########### TEST 7 START ##########\n");
+  {
+    Fs fs = FsNew();
+    FsMkfile(fs, "hello.txt");
+    FsPut(fs, "hello.txt", "hello\n");
+    FsPut(fs, "./hello.txt", "world\n"); // overwrites existing content
+    FsFree(fs);
+  }
+  printf("########### TEST 7 DONE ##########\n");
+
+  printf("########### TEST 8 START ##########\n");
+  {
+    Fs fs = FsNew();
+    FsMkfile(fs, "hello");
+    FsPut(fs, "hello/world", "random-message\n");
+    FsFree(fs);
+  }
+  printf("########### TEST 8 DONE ##########\n");
+
+  printf("########### TEST 9 START ##########\n");
+  {
+    Fs fs = FsNew();
+    FsMkdir(fs, "hello");
+    FsCat(fs, "hello");
+    FsCat(fs, ".");
+    FsCat(fs, "/");
+    FsFree(fs);
+  }
+  printf("########### TEST 9 DONE ##########\n");
+
+  printf("########### TEST 10 START ##########\n");
+  {
+    Fs fs = FsNew();
+    FsMkdir(fs, "hello");
+    FsMkdir(fs, "hello/world");
+    FsDldir(fs, "hello");
+    FsTree(fs, NULL);
+    FsFree(fs);
+  }
+  printf("########### TEST 10 DONE ##########\n");
+
+  printf("########### TEST 11 START ##########\n");
+  {
+    Fs fs = FsNew();
+    FsMkdir(fs, "hello");
+    FsDl(fs, false, "hello");
+    FsFree(fs);
+  }
+  printf("########### TEST 11 DONE ##########\n");
+
+  printf("########### TEST 12 START ##########\n");
+  {
+    Fs fs = FsNew();
+    FsMkfile(fs, "hello.txt");
+    FsPut(fs, "hello.txt", "hello\n");
+    FsMkfile(fs, "world.txt");
+    FsPut(fs, "world.txt", "world\n");
+    FsCat(fs, "world.txt");
+    printf("---\n");
+    char *src[] = {"hello.txt", NULL};
+    FsCp(fs, false, src, "world.txt");
+    FsCat(fs, "world.txt");
+    printf("---\n");
+    FsTree(fs, NULL);
+    FsFree(fs);
+  }
+  printf("########### TEST 12 DONE ##########\n");
+
+  printf("########### TEST 13 START ##########\n");
+  {
+    Fs fs = FsNew();
+    FsMkfile(fs, "hello.txt");
+    FsPut(fs, "hello.txt", "hello\n");
+    FsTree(fs, NULL);
+    printf("---\n");
+    char *src[] = {"hello.txt", NULL};
+    FsMv(fs, src, "world.txt");
+    FsTree(fs, NULL);
+    printf("---\n");
+    FsCat(fs, "world.txt");
+    FsFree(fs);
+  }
+  printf("########### TEST 13 DONE ##########\n");
+
+  printf("########### ALL DONE ##########\n");
+  bash(NULL);
   return 0;
 }
