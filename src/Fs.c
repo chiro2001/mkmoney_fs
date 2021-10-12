@@ -275,7 +275,8 @@ char *FsPathGetStr(PATH *path) {
   while (p) {
     strcpy(str, p->file->name);
     str += p->file->name_length;
-    if (strcmp(p->file->name, FS_SPLIT_STR) != 0) {
+    if (strcmp(p->file->name, FS_SPLIT_STR) != 0 &&
+        p->file->type == DIRECTORY && p->next) {
       *(str++) = FS_SPLIT;
     }
     p = p->next;
@@ -640,14 +641,19 @@ void FsLs(Fs fs, char *pathStr) {
     PATH *path = NULL;
     FsErrors res = FsPathParse(fs->pathRoot, pathStr, &path);
     if (res) {
-      FsPathFree(path);
       PERRORD(res, "ls: cannot access '%s'", pathStr);
+      FsPathFree(path);
       return;
     }
     target = FsPathGetTail(path)->file;
     FsPathFree(path);
     if (target->type == REGULAR_FILE) {
-      PERRORD(FS_NOT_A_DIRECTORY, "ls: cannot access '%s'", pathStr);
+      // ls 到一个文件，则输出这个文件~~的绝对路径~~
+      // char *pathStrAbs = FsPathGetStr(path);
+      // puts(pathStrAbs);
+      // free(pathStrAbs);
+      // 输出这个文件的输入参数
+      puts(pathStr);
       return;
     }
   }
@@ -680,7 +686,7 @@ void FsPwd(Fs fs) {
   free(pathStrAbs);
 }
 
-FsErrors FsTreeInner(FIL *file, int layer) {
+FsErrors FsTreeInner(FIL *file, int layer, char *pathStrInput) {
   if (!file)
     return FS_OK;
   // printf("Tree: [%d] %s\n", layer, file->name);
@@ -691,7 +697,8 @@ FsErrors FsTreeInner(FIL *file, int layer) {
   // FsFilPrint(file);
   FsFilSort(file, 0);
   if (layer == 0)
-    printf("%s\n", file->name);
+    // printf("%s\n", file->name);
+    printf("%s\n", pathStrInput);
   for (size_t i = 0; i < file->size_children; i++) {
     FIL *f = file->children[i];
     if (f->link)
@@ -713,7 +720,7 @@ FsErrors FsTreeInner(FIL *file, int layer) {
     puts("");
 #endif
     if (f->type == DIRECTORY) {
-      FsErrors res = FsTreeInner(f, layer + 1);
+      FsErrors res = FsTreeInner(f, layer + 1, pathStrInput);
       if (res) {
         return res;
       }
@@ -732,6 +739,11 @@ FsErrors FsTreeInner(FIL *file, int layer) {
 // 路径的前缀是一个常规文件 tree: 'path': Not a directory
 // 路径的前缀不存在 tree: 'path': No such file or directory
 void FsTree(Fs fs, char *pathStr) {
+  if (!pathStr) {
+    // 根目录
+    FsTree(fs, "/");
+    return;
+  }
   PATH *path = NULL;
   FsErrors res = FsPathParse(fs->pathRoot, pathStr, &path);
   if (res) {
@@ -742,7 +754,7 @@ void FsTree(Fs fs, char *pathStr) {
   char *pathStrAbs = FsPathGetStr(path);
   PATH *pathTail = FsPathGetTail(path);
   // printf("tree %s:\n", pathStrAbs);
-  res = FsTreeInner(pathTail->file, 0);
+  res = FsTreeInner(pathTail->file, 0, pathStr);
   if (res) {
     FsPathFree(path);
     PERRORD(res, "tree: '%s'", pathStr);
@@ -903,7 +915,9 @@ FsErrors FsFilCopy(FIL *src, FIL *dst) {
   // 检查是否有同名文件
   FIL *found = FsFilFindByName(dst, src->name);
   if (found) {
-    return FS_FILE_EXISTS;
+    // 有同名文件，先删除
+    // return FS_FILE_EXISTS;
+    FsFilDlTree(found);
   }
   FIL *data = NULL;
   if (src->type == DIRECTORY) {
@@ -920,6 +934,7 @@ FsErrors FsFilCopy(FIL *src, FIL *dst) {
       FsFilCopy(src->children[i], data);
     }
   } else {
+    data->size_file = src->size_file;
     data->content = malloc(sizeof(char) * src->size_file);
     memcpy(data->content, src->content, src->size_file);
   }
@@ -989,7 +1004,18 @@ void FsCp(Fs fs, bool recursive, char *src[], char *dest) {
             PERRORD(FS_IS_A_DIRECTORY, "cp: '%s'", *pathStrPointer);
           } else {
             if (pathParentTail->file->type == DIRECTORY) {
-              FsFilCopy(pathParentTail->file, dstPathParentTail->file);
+              // 建立对应名字文件夹，然后按文件夹内复制
+              FIL *newDir = NULL;
+              char *name = FsPathStrGetName(dest);
+              FsInitDir(dstPathParentTail->file, &newDir, name);
+              free(name);
+              for (int i = 0; i < pathParentTail->file->size_children; i++) {
+                FsFilCopy(pathParentTail->file->children[i], newDir);
+              }
+              dstPathParentTail->file
+                  ->children[dstPathParentTail->file->size_children++] = newDir;
+              FsFilSort(dstPathParentTail->file, 0);
+              // FsFilCopy(pathParentTail->file, dstPathParentTail->file);
             } else {
               FIL *newFile = NULL;
               char *name = FsPathStrGetName(dest);
@@ -1003,7 +1029,6 @@ void FsCp(Fs fs, bool recursive, char *src[], char *dest) {
         FsPathFree(pathParent);
       }
       free(pathParentStr);
-
     } else {
       PERRORD(resDst, "cp: '%s'", dest);
     }
@@ -1044,9 +1069,8 @@ void FsCp(Fs fs, bool recursive, char *src[], char *dest) {
       if (pathParentTail->file->link) {
         PERRORD(FS_NO_SUCH_FILE, "cp: '%s'", *pathStrPointer);
       } else {
-        // printf("COPY (file->file): (%s->%s)\n", newFile->name, dstParent->name);
-        // FsFilPrint(newFile);
-        // FsFilPrint(dstParent);
+        // printf("COPY (file->file): (%s->%s)\n", newFile->name,
+        // dstParent->name); FsFilPrint(newFile); FsFilPrint(dstParent);
         res = FsFilCopy(newFile, dstParent);
         if (res) {
           PERRORD(res, "cp: '%s'", *pathStrPointer);
@@ -1082,18 +1106,31 @@ void FsCp(Fs fs, bool recursive, char *src[], char *dest) {
             }
           }
         } else {
-          // 复制该路径下的所有文件
-          for (int i = 0; i < pathParentTail->file->size_children; i++) {
-            FIL *f = pathParentTail->file->children[i];
-            // 不recursive 的时候不复制目录
-            if (!recursive && f->type == DIRECTORY) {
-              PERRORD(FS_IS_A_DIRECTORY, "cp: '%s'", f->name);
-              continue;
-            }
-            res = FsFilCopy(f, pathDstTail->file);
+          // 目标是个文件夹，则复制到文件夹内部
+          if (pathDstTail->file->type == DIRECTORY) {
+            // // 复制该路径下的所有文件
+            // for (int i = 0; i < pathParentTail->file->size_children; i++) {
+            //   FIL *f = pathParentTail->file->children[i];
+            //   // 不recursive 的时候不复制目录
+            //   if (!recursive && f->type == DIRECTORY) {
+            //     PERRORD(FS_IS_A_DIRECTORY, "cp: '%s'", f->name);
+            //     continue;
+            //   }
+            //   res = FsFilCopy(f, pathDstTail->file);
+            //   if (res) {
+            //     PERRORD(res, "cp: '%s'", f->name);
+            //   }
+            // }
+
+            // 复制文件到该文件夹下
+            res = FsFilCopy(pathParentTail->file, pathDstTail->file);
             if (res) {
-              PERRORD(res, "cp: '%s'", f->name);
+              PERRORD(res, "cp: '%s'", pathParentTail->file->name);
             }
+          }
+          else {
+            // 错误，不能 文件夹到文件
+            PERRORD(FS_NOT_A_DIRECTORY, "cp: '%s'", *pathStrPointer);
           }
         }
       }
