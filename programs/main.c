@@ -34,7 +34,6 @@ void bash(Fs fs_) {
       arg++;
     }
     char *name = input;
-    // printf("\tname: %s, arg: %s\n", name, arg);
     if (!*arg)
       arg = NULL;
 
@@ -106,7 +105,7 @@ void bash(Fs fs_) {
   puts("======= BYE ========");
 }
 
-int main(int argc, char **argv) {
+void TestExamples() {
   printf("########### TEST START ##########\n");
 
   printf("########### TEST 1 START ##########\n");
@@ -793,6 +792,12 @@ int main(int argc, char **argv) {
   printf("########### TEST EX 1 DONE ##########\n");
 
   printf("########### ALL DONE ##########\n");
+}
+
+int main(int argc, char **argv) {
+  // 启动测试
+  TestExamples();
+  // 启动交互程序
   bash(NULL);
   return 0;
 }
