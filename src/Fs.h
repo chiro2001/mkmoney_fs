@@ -5,17 +5,13 @@
 #ifndef FS_H
 #define FS_H
 
-// Chiro: TODO: Remove stdbool
-#include <stdbool.h>
-
-// Chiro: TODO: Remove FS_
-#define FS_PATH_MAX 4096
+#define PATH_MAX 4096
 
 typedef struct FsRep *Fs;
 
 Fs FsNew(void);
 
-void FsGetCwd(Fs fs, char cwd[FS_PATH_MAX + 1]);
+void FsGetCwd(Fs fs, char cwd[PATH_MAX + 1]);
 
 void FsFree(Fs fs);
 
@@ -42,12 +38,5 @@ void FsDl(Fs fs, bool recursive, char *path);
 void FsCp(Fs fs, bool recursive, char *src[], char *dest);
 
 void FsMv(Fs fs, char *src[], char *dest);
-
-// TODO: remove this
-void FsFilPrint(FIL *file);
-
-FsErrors FsPathParse(PATH *pathRoot, const char *pathStr, PATH **path);
-
-void FsPrint(Fs fs, char *pathStr);
 
 #endif

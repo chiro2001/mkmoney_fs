@@ -3,8 +3,11 @@
 //
 
 #include "FileType.h"
-#include "Fs.h"
 #include "utility.h"
+#ifdef PATH_MAX
+#undef PATH_MAX
+#endif
+#include "Fs.h"
 #include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
@@ -15,8 +18,8 @@ void bash(Fs fs_) {
   if (!fs) {
     fs = FsNew();
   }
-  char input[FS_PATH_MAX];
-  char cwd[FS_PATH_MAX];
+  char input[PATH_MAX];
+  char cwd[PATH_MAX];
   int to_exit = 0;
   while (!to_exit) {
     FsGetCwd(fs, cwd);
@@ -26,7 +29,7 @@ void bash(Fs fs_) {
     char *arg = input;
     if (!*input)
       continue;
-    while (arg < input + FS_PATH_MAX && *arg && *arg != ' ') {
+    while (arg < input + PATH_MAX && *arg && *arg != ' ') {
       arg++;
     }
     if (*arg == ' ') {
@@ -94,8 +97,6 @@ void bash(Fs fs_) {
         *(arg++) = '\0';
       char *srcFiles[] = {arg2, NULL};
       FsMv(fs, srcFiles, arg);
-    } else if (strcmp(name, "print") == 0) {
-      FsPrint(fs, arg);
     } else {
       printf("Unknown command: %s\n", name);
     }
@@ -801,3 +802,9 @@ int main(int argc, char **argv) {
   bash(NULL);
   return 0;
 }
+
+/***
+ * 说明
+ * 1. 编译时加入宏 `COLORED` 可以将文件夹显示为蓝色。
+ * 2. 没想好说什么，就请你访问 https://space.bilibili.com/672328094 点个关注吧。
+ */
