@@ -123,9 +123,6 @@ int main(int argc, char **argv) {
   {
     Fs fs = FsNew();
     FsMkfile(fs, "hello");
-    // FsPrint(fs, "/");
-    // FsPrint(fs, "/hello");
-    // FsTree(fs, NULL);
     FsMkfile(fs, "hello/world");
     FsMkdir(fs, "html");
     FsMkfile(fs, "html/index.html");

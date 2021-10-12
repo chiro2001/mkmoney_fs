@@ -24,7 +24,7 @@ const char FsErrorMessages[][64] = {"Fs OK",
                                     "Not a directory",
                                     "Directory not empty"};
 
-#define DEBUG
+// #define DEBUG
 
 #ifdef DEBUG
 #define PERROR(code, prefix)                                                   \
@@ -80,8 +80,8 @@ void FsFilSort(FIL *dir, int reverse) {
     for (int j = i + 1; j < dir->size_children; j++) {
       if (dir->children[j]->link)
         continue;
-      if (0 < (strcmp(dir->children[i]->name, dir->children[j]->name) *
-               (reverse ? -1 : 1))) {
+      if ((strcmp(dir->children[i]->name, dir->children[j]->name) *
+           (reverse ? -1 : 1)) > 0) {
         // printf("%s <==> %s\n", dir->children[i]->name,
         // dir->children[j]->name);
         tmp = dir->children[i];
@@ -236,10 +236,7 @@ Fs FsNew(void) {
   // 把 `/../` -> `/`
   fs->root->children[1]->link = fs->root;
   // 初始化当前访问路径
-  // fs->last = malloc(sizeof(PATH));
-  // assert(fs->last);
-  // memset(fs->last, 0, sizeof(PATH));
-  // 指向根目录，forward不用，next暂时留空
+  // 指向根目录
   fs->pathRoot = malloc(sizeof(PATH));
   assert(fs->pathRoot);
   memset(fs->pathRoot, 0, sizeof(PATH));
@@ -296,14 +293,6 @@ void FsPathSimplify(PATH **path) {
     return;
   // Path 最顶层一定不是 link
   while (p && p->next) {
-    // printf("path now: ");
-    // char *pathStrAbs = FsPathGetStr(*path);
-    // puts(pathStrAbs);
-    // free(pathStrAbs);
-    // printf("p: ");
-    // FsFilPrint(p->file);
-    // printf("p->next: ");
-    // FsFilPrint(p->next->file);
     if (p->next->file->link) {
       // 遇到 link，则开始收缩
       if (p->next->file->link == p->file &&
@@ -403,10 +392,6 @@ FsErrors FsPathParse(PATH *pathRoot, const char *pathStr, PATH **path) {
           pathTail = FsPathInsert(pathTail, target);
           FsPathSimplify(path);
           pathTail = FsPathGetTail(*path);
-          // printf("After insert [file]: ");
-          // char *pathAbs = FsPathGetStr(*path);
-          // puts(pathAbs);
-          // free(pathAbs);
           return FS_OK;
         } else {
           return FS_NOT_A_DIRECTORY;
@@ -415,10 +400,6 @@ FsErrors FsPathParse(PATH *pathRoot, const char *pathStr, PATH **path) {
         // target->type == DIRECTORY
         pathTail = FsPathInsert(pathTail, target);
         FsPathSimplify(path);
-        // printf("After insert [dir]: ");
-        // char *pathAbs = FsPathGetStr(*path);
-        // puts(pathAbs);
-        // free(pathAbs);
         pathTail = FsPathGetTail(*path);
       }
     }
@@ -436,36 +417,10 @@ FsErrors FsPathParse(PATH *pathRoot, const char *pathStr, PATH **path) {
 /// \param fs
 /// \param cwd
 void FsGetCwd(Fs fs, char cwd[FS_PATH_MAX + 1]) {
-  // char *p = cwd;
-  // PATH *path = fs->pathRoot;
-  // char *p2 = NULL;
-  // while (path) {
-  //   p2 = path->file->name;
-  //   while (*p2)
-  //     *(p++) = *(p2++);
-  //   path = path->next;
-  // }
-  // *p = '\0';
   char *pathAbs = FsPathGetStr(fs->pathRoot);
   strcpy(cwd, pathAbs);
   free(pathAbs);
 }
-
-// /// 清理文件树
-// /// \param file
-// void FsFilFree(FIL *file) {
-//   if (!file)
-//     return;
-//   if (file->link) {
-//     // 链接文件不需要删除
-//     return;
-//   }
-//   while (file->size_children)
-//     FsFilFree(file->children[--file->size_children]);
-//   free(file->children);
-//   free(file->name);
-//   free(file);
-// }
 
 // 这个函数应该释放与给定Fs 关联的所有内存。在处理每个阶段时，
 // 您可能需要更新这个函数，以释放您创建的任何新数
@@ -1070,8 +1025,8 @@ void FsCp(Fs fs, bool recursive, char *src[], char *dest) {
     }
     char *nameOld = malloc(sizeof(char) * (pathDstTail->file->name_length + 1));
     strcpy(nameOld, pathDstTail->file->name);
-    printf("To del: (%s) ", nameOld);
-    FsFilPrint(pathDstTail->file);
+    // printf("To del: (%s) ", nameOld);
+    // FsFilPrint(pathDstTail->file);
     FsFilDlTree(pathDstTail->file);
 
     PATH *pathParentTail = FsPathGetTail(pathParent);
@@ -1089,9 +1044,9 @@ void FsCp(Fs fs, bool recursive, char *src[], char *dest) {
       if (pathParentTail->file->link) {
         PERRORD(FS_NO_SUCH_FILE, "cp: '%s'", *pathStrPointer);
       } else {
-        printf("COPY (file->file): (%s->%s)\n", newFile->name, dstParent->name);
-        FsFilPrint(newFile);
-        FsFilPrint(dstParent);
+        // printf("COPY (file->file): (%s->%s)\n", newFile->name, dstParent->name);
+        // FsFilPrint(newFile);
+        // FsFilPrint(dstParent);
         res = FsFilCopy(newFile, dstParent);
         if (res) {
           PERRORD(res, "cp: '%s'", *pathStrPointer);
@@ -1241,35 +1196,9 @@ void FsMv(Fs fs, char *src[], char *dest) {
       FsPathFree(pathParent);
       return;
     }
-    // char *nameOld = malloc(sizeof(char) * (pathDstTail->file->name_length +
-    // 1)); strcpy(nameOld, pathDstTail->file->name); printf("To del: (%s) ",
-    // nameOld); FsFilPrint(pathDstTail->file);
     FsFilDlTree(pathDstTail->file);
 
     PATH *pathParentTail = FsPathGetTail(pathParent);
-    // if (pathParentTail->file->link) {
-    //   PERRORD(FS_NO_SUCH_FILE, "mv: '%s'", *pathStrPointer);
-    // } else {
-    //   // 复制到内存
-    //   FIL *newFile = NULL;
-    //   FsInitFile(pathParentTail->file->parent, &newFile, nameOld);
-    //   newFile->content = malloc(sizeof(char) * newFile->size_file);
-    //   memcpy(newFile->content, pathParentTail->file->content,
-    //          sizeof(newFile->size_file));
-    //   // 复制该文件
-    //   if (pathParentTail->file->link) {
-    //     PERRORD(FS_NO_SUCH_FILE, "mv: '%s'", *pathStrPointer);
-    //   } else {
-    //     printf("COPY (file->file): (%s->%s)\n", newFile->name,
-    //     dstParent->name); FsFilPrint(newFile); FsFilPrint(dstParent); res =
-    //     FsFilCopy(newFile, dstParent); if (res) {
-    //       PERRORD(res, "cmv: '%s'", *pathStrPointer);
-    //     }
-    //   }
-    //   FsFilFree(newFile);
-    // }
-    // free(nameOld);
-
     // 移动到目标处
     FsFilMove(pathParentTail->file, dstParent);
     FsPathFree(pathParent);
