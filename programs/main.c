@@ -52,10 +52,43 @@ void bash(Fs fs_) {
       FsLs(fs, arg);
     } else if (strcmp(name, "cat") == 0) {
       FsCat(fs, arg);
+    } else if (strcmp(name, "put") == 0) {
+      char *content = arg;
+      while (*content && *content != ' ')
+        content++;
+      if (*content == ' ') {
+        *content = '\0';
+        content++;
+      } else {
+        content = "";
+      }
+      FsPut(fs, arg, content);
     } else if (strcmp(name, "rmdir") == 0) {
       FsDldir(fs, arg);
     } else if (strcmp(name, "mkfile") == 0) {
       FsMkfile(fs, arg);
+    } else if (strcmp(name, "rm") == 0) {
+      bool recursive = false;
+      if (*arg == '-' && *(arg + 1) == 'r' && *(arg + 2) == ' ' && *(arg + 3)) {
+        recursive = true;
+        arg += 3;
+      }
+      FsDl(fs, recursive, arg);
+    } else if (strcmp(name, "cp") == 0) {
+      bool recursive = false;
+      if (*arg == '-' && *(arg + 1) == 'r' && *(arg + 2) == ' ' && *(arg + 3)) {
+        recursive = true;
+        arg += 3;
+      }
+      char *arg2 = arg;
+      while (*arg && *arg != ' ')
+        arg++;
+      if (*arg == ' ')
+        *(arg++) = '\0';
+      char *srcFiles[] = {arg2, NULL};
+      FsCp(fs, recursive, srcFiles, arg);
+    } else if (strcmp(name, "print") == 0) {
+      FsPrint(fs, arg);
     } else {
       printf("Unknown command: %s\n", name);
     }
@@ -91,12 +124,12 @@ int main(int argc, char **argv) {
   puts("=================");
   // FsCd(fs, "/dir1/dir2/");
   FsCd(fs, "");
+  FsMkfile(fs, "/f");
   FsLs(fs, NULL);
 
-
   printf("ALL DONE\n");
-  // FsFree(fs);
 
   bash(fs);
+  FsFree(fs);
   return 0;
 }

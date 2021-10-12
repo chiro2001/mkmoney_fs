@@ -33,8 +33,12 @@ struct FIL_t {
   struct FIL_t *parent;
   // 子文件列表
   struct FIL_t **children;
-  // 子文件夹 / 文件数量大小
-  size_t size;
+  // 子文件数量大小
+  size_t size_children;
+  // 文件大小
+  size_t size_file;
+  // 文件内容
+  char *content;
 };
 
 typedef struct FIL_t FIL;

@@ -31,7 +31,7 @@ void FsPwd(Fs fs);
 
 void FsTree(Fs fs, char *path);
 
-void FsPut(Fs fs, char *path, char *content);
+void FsPut(Fs fs, char *pathStr, char *content);
 
 void FsCat(Fs fs, char *path);
 
@@ -42,5 +42,12 @@ void FsDl(Fs fs, bool recursive, char *path);
 void FsCp(Fs fs, bool recursive, char *src[], char *dest);
 
 void FsMv(Fs fs, char *src[], char *dest);
+
+// TODO: remove this
+void FsFilPrint(FIL *file);
+
+FsErrors FsPathParse(PATH *pathRoot, const char *pathStr, PATH **path);
+
+void FsPrint(Fs fs, char *pathStr);
 
 #endif
