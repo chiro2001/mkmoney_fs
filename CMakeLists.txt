@@ -20,8 +20,7 @@ include_directories(${include_dirs})
 
 file(GLOB_RECURSE source_files
         "${PROJECT_SOURCE_DIR}/src/*.h"
-        "${PROJECT_SOURCE_DIR}/src/Fs.c"
-        "${PROJECT_SOURCE_DIR}/src/listFile.c"
+        "${PROJECT_SOURCE_DIR}/src/myFs.c"
         "${PROJECT_SOURCE_DIR}/src/utility.c")
 message(STATUS "Source files: ${source_files}")
 

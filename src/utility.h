@@ -10,6 +10,12 @@
 // Written by:
 #include <stdbool.h>
 #include <stdint.h>
+#include <stddef.h>
+
+typedef enum {
+  REGULAR_FILE,
+  DIRECTORY,
+} FileType;
 
 typedef enum {
   FS_OK = 0,

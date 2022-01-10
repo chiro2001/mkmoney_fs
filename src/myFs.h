@@ -2,16 +2,16 @@
 
 // !!! DO NOT MODIFY THIS FILE !!!
 
-#ifndef FS_H
-#define FS_H
+#ifndef BASH_FS_H
+#define BASH_FS_H
 
-#define PATH_MAX 4096
+#define FS_PATH_MAX 4096
 
 typedef struct FsRep *Fs;
 
 Fs FsNew(void);
 
-void FsGetCwd(Fs fs, char cwd[PATH_MAX + 1]);
+void FsGetCwd(Fs fs, char cwd[FS_PATH_MAX + 1]);
 
 void FsFree(Fs fs);
 

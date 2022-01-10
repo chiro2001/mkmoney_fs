@@ -8,8 +8,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "FileType.h"
 #include "utility.h"
+#include "myFs.h"
 
 // implement the functions declared in utility.h here
 
@@ -322,7 +322,7 @@ FsErrors FsPathParse(PATH *pathRoot, const char *pathStr, PATH **path) {
   // 现在 path 已经是绝对路径，接下来拼接 pathStr，
   PATH *pathTail = FsPathGetTail(*path);
   // 拼接过程中检查文件是否存在
-  char buf[PATH_MAX];
+  char buf[FS_PATH_MAX];
   char *p2 = NULL;
   // 特殊处理 '/' 开头：去掉
   while (*p == FS_SPLIT)

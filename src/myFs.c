@@ -9,11 +9,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "FileType.h"
-#ifdef PATH_MAX
-#undef PATH_MAX
-#endif
-#include "Fs.h"
+#include "myFs.h"
 #include "utility.h"
 
 /// 错误码 -> 错误描述
@@ -54,7 +50,7 @@ Fs FsNew(void) {
 /// 得到当前目录的路径
 /// \param fs
 /// \param cwd
-void FsGetCwd(Fs fs, char cwd[PATH_MAX + 1]) {
+void FsGetCwd(Fs fs, char cwd[FS_PATH_MAX + 1]) {
   char *pathAbs = FsPathGetStr(fs->pathRoot);
   strcpy(cwd, pathAbs);
   free(pathAbs);
